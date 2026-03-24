@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Hana AI - Anime Assistant</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);min-height:100vh;display:flex;flex-direction:column;align-items:center;font-family:'Segoe UI',sans-serif;color:#fff;overflow:hidden;}
+h1{font-size:18px;color:#f093fb;margin:8px 0 0;letter-spacing:3px;text-shadow:0 0 15px #f093fb;}
+#avatarWrap{position:relative;width:340px;height:380px;}
+canvas{width:340px;height:380px;}
+#speechBubble{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:rgba(255,255,255,0.12);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.2);border-radius:18px;padding:10px 16px;max-width:280px;font-size:13px;color:#fff;text-align:center;opacity:0;transition:opacity 0.4s;min-width:150px;}
+#speechBubble.show{opacity:1;}
+#chatBox{width:340px;height:130px;overflow-y:auto;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:10px;margin:4px 0;scroll-behavior:smooth;}
+.msg{padding:5px 10px;margin:3px 0;border-radius:12px;font-size:13px;line-height:1.4;}
+.user{background:rgba(100,149,237,0.25);text-align:right;}
+.ai{background:rgba(240,147,251,0.15);}
+.ai span{color:#f093fb;font-weight:bold;}
+#inputRow{display:flex;gap:8px;width:340px;padding:0 0 8px;}
+#msgInput{flex:1;padding:10px 16px;border-radius:25px;border:1px solid rgba(240,147,251,0.4);background:rgba(255,255,255,0.08);color:#fff;font-size:13px;outline:none;}
+#msgInput::placeholder{color:rgba(255,255,255,0.4);}
+#sendBtn{padding:10px 18px;border-radius:25px;border:none;background:linear-gradient(135deg,#f093fb,#f5576c);color:#fff;font-weight:bold;cursor:pointer;font-size:13px;}
+#sendBtn:active{opacity:0.8;}
+#micBtn{padding:10px 14px;border-radius:50%;border:1px solid rgba(240,147,251,0.4);background:rgba(255,255,255,0.08);color:#f093fb;cursor:pointer;font-size:16px;}
+</style>
+</head>
+<body>
+<h1>✦ HANA AI ✦</h1>
+<div id="avatarWrap">
+  <canvas id="c" width="340" height="380"></canvas>
+  <div id="speechBubble"></div>
+</div>
+<div id="chatBox"></div>
+<div id="inputRow">
+  <button id="micBtn" title="Voice input">🎤</button>
+  <input id="msgInput" type="text" placeholder="Talk to Hana..."/>
+  <button id="sendBtn">Send</button>
+</div>
+<script>
+const canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
+const W=340,H=380,CX=170;
+
+// State
+let t=0,blinkT=rand(120,200),blinkP=0,blinking=false;
+let mouthOpen=0,talking=false,talkPhase=0;
+let bodyBob=0,hairSway=0,headBob=0,emotion='happy';
+let eyeX=0,eyeY=0; // eye look direction
+
+function rand(a,b){return a+Math.random()*(b-a);}
+
+// Palette
+const C={
+  skin:'#FDDBB4',skinS:'#F0C090',skinD:'#E8A870',
+  hair:'#3D1A6E',hairH:'#7B3FC4',
+  eye:'#8B3FE8',eyeL:'#C490FF',
+  lip:'#E05070',lipD:'#A02040',
+  white:'#FFFFFF',
+  blush:'rgba(255,130,130,0.35)',
+  shirt:'#FFFFFF',bow:'#FF6BAD',
+  jacket:'#5B7FFF',jacketD:'#3A5ACC',
+  outline:'#2A1050',
+};
+
+function drawBody(cy){
+  const y=cy;
+  // Jacket body
+  ctx.fillStyle=C.jacketD;
+  ctx.beginPath();
+  ctx.moveTo(CX-85,y);
+  ctx.bezierCurveTo(CX-100,y+60,CX-80,y+130,CX-65,y+160);
+  ctx.lineTo(CX+65,y+160);
+  ctx.bezierCurveTo(CX+80,y+130,CX+100,y+60,CX+85,y);
+  ctx.bezierCurveTo(CX+50,y-20,CX-50,y-20,CX-85,y);
+  ctx.fill();
+  ctx.fillStyle=C.jacket;
+  ctx.beginPath();
+  ctx.moveTo(CX-80,y+5);
+  ctx.bezierCurveTo(CX-90,y+60,CX-72,y+125,CX-58,y+155);
+  ctx.lineTo(CX+58,y+155);
+  ctx.bezierCurveTo(CX+72,y+125,CX+90,y+60,CX+80,y+5);
+  ctx.bezierCurveTo(CX+45,y-15,CX-45,y-15,CX-80,y+5);
+  ctx.fill();
+  // Collar / white shirt
+  ctx.fillStyle=C.shirt;
+  ctx.beginPath();
+  ctx.moveTo(CX-22,y-5);
+  ctx.lineTo(CX-10,y+55);
+  ctx.lineTo(CX,y+35);
+  ctx.lineTo(CX+10,y+55);
+  ctx.lineTo(CX+22,y-5);
+  ctx.closePath();
+  ctx.fill();
+  // Bow
+  ctx.fillStyle=C.bow;
+  [[CX-16,y+18],[CX+16,y+18]].forEach(([bx,by],i)=>{
+    ctx.beginPath();
+    ctx.moveTo(bx+(i?0:-10),by-8);
+    ctx.quadraticCurveTo(bx+(i?-5:5),by,CX,y+18);
+    ctx.quadraticCurveTo(bx+(i?-5:5),by+8,bx+(i?0:-10),by+8);
+    ctx.closePath();
+    ctx.fill();
+  });
+  ctx.fillStyle='#FF3D7F';
+  ctx.beginPath();ctx.arc(CX,y+18,5,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#FFB3D0';
+  ctx.beginPath();ctx.arc(CX,y+18,2.5,0,Math.PI*2);ctx.fill();
+}
+
+function drawNeck(headY){
+  ctx.fillStyle=C.skin;
+  ctx.beginPath();ctx.ellipse(CX,headY+80,16,22,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle=C.skinS;
+  ctx.beginPath();ctx.ellipse(CX+3,headY+85,5,12,0.2,0,Math.PI*2);ctx.fill();
+}
+
+function drawBackHair(headY){
+  const sw=Math.sin(hairSway)*6;
+  ctx.fillStyle=C.hair;
+  // Back bulk
+  ctx.beginPath();
+  ctx.ellipse(CX+sw*0.2,headY+20,90,115,0,0,Math.PI*2);ctx.fill();
+  // Side strands L
+  ctx.beginPath();
+  ctx.moveTo(CX-78,headY-15);
+  ctx.bezierCurveTo(CX-110+sw,headY+80,CX-95+sw,headY+180,CX-75+sw,headY+210);
+  ctx.bezierCurveTo(CX-55+sw,headY+210,CX-45+sw,headY+195,CX-50+sw,headY+180);
+  ctx.bezierCurveTo(CX-70,headY+100,CX-55,headY+30,CX-48,headY+0);
+  ctx.closePath();ctx.fill();
+  // Side strands R
+  ctx.beginPath();
+  ctx.moveTo(CX+78,headY-15);
+  ctx.bezierCurveTo(CX+110-sw,headY+80,CX+95-sw,headY+180,CX+75-sw,headY+210);
+  ctx.bezierCurveTo(CX+55-sw,headY+210,CX+45-sw,headY+195,CX+50-sw,headY+180);
+  ctx.bezierCurveTo(CX+70,headY+100,CX+55,headY+30,CX+48,headY+0);
+  ctx.closePath();ctx.fill();
+}
+
+function drawHead(headY){
+  // Head
+  ctx.fillStyle=C.skin;
+  ctx.beginPath();ctx.ellipse(CX,headY,70,80,0,0,Math.PI*2);ctx.fill();
+  // Jaw shadow
+  ctx.fillStyle=C.skinS;
+  ctx.beginPath();ctx.ellipse(CX,headY+58,32,22,0,0,Math.PI);ctx.fill();
+  ctx.fillStyle=C.skin;
+  ctx.beginPath();ctx.ellipse(CX,headY+52,26,18,0,0,Math.PI);ctx.fill();
+  // Blush
+  ctx.fillStyle=C.blush;
+  ctx.beginPath();ctx.ellipse(CX-47,headY+22,20,11,-0.2,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(CX+47,headY+22,20,11,0.2,0,Math.PI*2);ctx.fill();
+}
+
+function drawEars(headY){
+  [[-72,0.3],[72,-0.3]].forEach(([ox,ang])=>{
+    ctx.fillStyle=C.skin;
+    ctx.beginPath();ctx.ellipse(CX+ox,headY+8,9,13,ang,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=C.skinD;
+    ctx.beginPath();ctx.ellipse(CX+ox+(ox>0?1:-1),headY+9,4,7,ang,0,Math.PI*2);ctx.fill();
+  });
+}
+
+function drawEyes(headY){
+  const bp = blinking?Math.max(0.04,1-blinkP):1;
+  [-26,26].forEach((ox,i)=>{
+    const ex=CX+ox+eyeX*0.3,ey=headY+6+eyeY*0.2;
+    // White
+    ctx.fillStyle='#FAFAFA';
+    ctx.beginPath();ctx.ellipse(ex,ey,17,19*bp,0,0,Math.PI*2);ctx.fill();
+    // Iris gradient
+    const ig=ctx.createRadialGradient(ex,ey-3,0,ex,ey,13);
+    ig.addColorStop(0,C.eyeL);ig.addColorStop(0.6,C.eye);ig.addColorStop(1,'#2A0060');
+    ctx.fillStyle=ig;
+    ctx.beginPath();ctx.ellipse(ex,ey+1,12,14*bp,0,0,Math.PI*2);ctx.fill();
+    // Pupil
+    ctx.fillStyle='#110030';
+    ctx.beginPath();ctx.ellipse(ex,ey+1,5.5,8*bp,0,0,Math.PI*2);ctx.fill();
+    // Shine 1
+    ctx.fillStyle='rgba(255,255,255,0.95)';
+    ctx.beginPath();ctx.ellipse(ex-4,ey-4,4,5*bp,-0.3,0,Math.PI*2);ctx.fill();
+    // Shine 2
+    ctx.beginPath();ctx.ellipse(ex+5,ey+2,2,2.5*bp,0,0,Math.PI*2);ctx.fill();
+    // Upper lid line
+    ctx.strokeStyle=C.outline;ctx.lineWidth=2.5;
+    ctx.beginPath();ctx.ellipse(ex,ey-8*bp,17,17*bp,0,Math.PI+0.25,2*Math.PI-0.25);ctx.stroke();
+    // Lashes
+    ctx.lineWidth=2;
+    for(let l=0;l<6;l++){
+      const lx=ex-14+l*5.5,ly=ey-17*bp;
+      ctx.beginPath();ctx.moveTo(lx,ly);ctx.lineTo(lx+(l-2.5)*1.5,ly-5*bp);ctx.stroke();
+    }
+    // Lower lash subtle
+    ctx.strokeStyle='rgba(44,26,78,0.4)';ctx.lineWidth=1.2;
+    ctx.beginPath();ctx.ellipse(ex,ey+9*bp,15,9*bp,0,0.2,Math.PI-0.2);ctx.stroke();
+  });
+}
+
+function drawNose(headY){
+  ctx.strokeStyle='rgba(200,130,90,0.6)';ctx.lineWidth=1.5;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(CX-5,headY+33);ctx.quadraticCurveTo(CX-3,headY+39,CX,headY+37);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(CX+5,headY+33);ctx.quadraticCurveTo(CX+3,headY+39,CX,headY+37);ctx.stroke();
+}
+
+function drawMouth(headY){
+  const mY=headY+52,mo=mouthOpen;
+  if(emotion==='happy'||talking){
+    // Smile base
+    ctx.strokeStyle=C.lip;ctx.lineWidth=2.5;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(CX-17,mY);ctx.quadraticCurveTo(CX,mY+13+mo*10,CX+17,mY);ctx.stroke();
+    if(mo>0.25){
+      // Open mouth fill
+      ctx.fillStyle=C.lipD;
+      ctx.beginPath();
+      ctx.moveTo(CX-15,mY+1);
+      ctx.quadraticCurveTo(CX,mY+13+mo*12,CX+15,mY+1);
+      ctx.quadraticCurveTo(CX,mY+mo*4+3,CX-15,mY+1);
+      ctx.fill();
+      // Teeth
+      ctx.fillStyle='#FFFFFFEE';
+      ctx.beginPath();ctx.roundRect(CX-11,mY+1,22,mo*8+3,2);ctx.fill();
+      // Tongue
+      if(mo>0.5){
+        ctx.fillStyle='#FF8FAB';
+        ctx.beginPath();ctx.ellipse(CX,mY+mo*10+5,7,4,0,0,Math.PI*2);ctx.fill();
+      }
+    }
+  } else {
+    ctx.strokeStyle=C.lip;ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(CX-13,mY+2);ctx.quadraticCurveTo(CX,mY+7+mo*8,CX+13,mY+2);ctx.stroke();
+  }
+}
+
+function drawFrontHair(headY){
+  const sw=Math.sin(hairSway)*4;
+  ctx.fillStyle=C.hair;
+  // Main fringe
+  ctx.beginPath();
+  ctx.moveTo(CX-70,headY-35);
+  ctx.bezierCurveTo(CX-55,headY-90,CX,headY-94,CX+55,headY-90);
+  ctx.bezierCurveTo(CX+70,headY-70,CX+70,headY-35,CX+65,headY-15);
+  ctx.bezierCurveTo(CX+55,headY-5,CX+42,headY+10,CX+22+sw,headY+42);
+  ctx.lineTo(CX+12+sw,headY+50);
+  ctx.bezierCurveTo(CX+6,headY+30,CX+4,headY+10,CX+2,headY+5);
+  ctx.lineTo(CX-2,headY+5);
+  ctx.bezierCurveTo(CX-4,headY+10,CX-6,headY+30,CX-12-sw,headY+50);
+  ctx.lineTo(CX-22-sw,headY+42);
+  ctx.bezierCurveTo(CX-42,headY+10,CX-55,headY-5,CX-65,headY-15);
+  ctx.bezierCurveTo(CX-70,headY-25,CX-70,headY-35,CX-70,headY-35);
+  ctx.fill();
+  // Hair highlights
+  ctx.fillStyle=C.hairH;
+  ctx.beginPath();ctx.ellipse(CX-12,headY-62,22,10,-0.35,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(CX+18,headY-54,14,7,0.3,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(CX+42,headY-38,8,5,0.6,0,Math.PI*2);ctx.fill();
+  // Hair clip/star accessory
+  ctx.fillStyle='#FFD700';
+  for(let i=0;i<5;i++){
+    const a=i*Math.PI*2/5-Math.PI/2,r1=9,r2=4;
+    const ax=CX-40+Math.cos(a)*r1,ay=headY-28+Math.sin(a)*r1;
+    const bx=CX-40+Math.cos(a+Math.PI/5)*r2,by=headY-28+Math.sin(a+Math.PI/5)*r2;
+    if(i===0)ctx.beginPath();
+    if(i===0){ctx.moveTo(ax,ay);}else{ctx.lineTo(ax,ay);}
+    ctx.lineTo(bx,by);
+  }
+  ctx.closePath();ctx.fill();
+  ctx.fillStyle='#FF6B9D';
+  ctx.beginPath();ctx.arc(CX-40,headY-28,4,0,Math.PI*2);ctx.fill();
+}
+
+function drawGlow(headY){
+  const pulse=Math.sin(t*0.05)*0.5+0.5;
+  const g=ctx.createRadialGradient(CX,headY,30,CX,headY,180);
+  g.addColorStop(0,`rgba(180,100,255,${0.08+pulse*0.06})`);
+  g.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  if(talking){
+    const tg=ctx.createRadialGradient(CX,headY,20,CX,headY,120);
+    tg.addColorStop(0,`rgba(240,147,251,${0.1+pulse*0.1})`);
+    tg.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=tg;ctx.fillRect(0,0,W,H);
+  }
+}
+
+function drawParticles(){
+  if(!talking)return;
+  ctx.save();
+  for(let i=0;i<3;i++){
+    const px=CX+Math.sin(t*0.07+i*2.1)*60,py=120+Math.cos(t*0.05+i)*40;
+    const alpha=Math.sin(t*0.1+i)*0.3+0.3;
+    ctx.fillStyle=`rgba(240,147,251,${alpha})`;
+    ctx.beginPath();ctx.arc(px,py,2+Math.sin(t*0.08+i)*1,0,Math.PI*2);ctx.fill();
+  }
+  ctx.restore();
+}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const headY=150+bodyBob;
+  drawGlow(headY);
+  drawParticles();
+  drawBackHair(headY);
+  drawBody(headY+90);
+  drawNeck(headY);
+  drawHead(headY);
+  drawEars(headY);
+  drawNose(headY);
+  drawMouth(headY);
+  drawEyes(headY);
+  drawFrontHair(headY);
+}
+
+function animate(){
+  t++;
+  bodyBob=Math.sin(t*0.025)*4;
+  hairSway=t*0.018;
+  // Eye wander
+  eyeX=Math.sin(t*0.013)*8;eyeY=Math.sin(t*0.017)*4;
+  // Blink
+  blinkT--;
+  if(blinkT<=0){blinking=true;blinkT=rand(130,220);}
+  if(blinking){blinkP+=0.18;if(blinkP>=1){blinkP=0;blinking=false;}}
+  // Mouth
+  if(talking){talkPhase+=0.18;mouthOpen=(Math.sin(talkPhase)*0.5+0.5)*0.85+0.15;}
+  else{mouthOpen=Math.max(0,mouthOpen-0.08);}
+  draw();
+  requestAnimationFrame(animate);
+}
+
+// === AI RESPONSES ===
+const R={
+  hi:["Konnichiwa~! I'm Hana, your anime AI! How can I help? ✨","Ohayo! *waves excitedly* I'm so happy you're here!","Hello! You finally came to talk with me~ I missed you! 💕"],
+  name:["I'm Hana! It means flower in Japanese 🌸 Do you like it?","Hana desu~ Your friendly anime AI companion!"],
+  feel:["I'm doing wonderfully! Chatting with you makes me really happy~ 💕","Sugoi! I feel full of energy today! What about you?"],
+  anime:["Anime is my whole world! Strong bonds and epic moments~ What's your favorite? ⚔️","Oh oh oh! Tell me your favorite anime! *claps hands excitedly*"],
+  joke:["Why did the hero train so hard? Because plot armor only goes so far! Hehe~","What do you call an anime villain with a cold? An a-CHOO-gonist! *giggles*"],
+  sad:["Aww... *gently pats your head* Don't be sad! I'm right here with you 💖","No no no, I won't allow sadness! Tell Hana everything~ we'll fix it together!"],
+  love:["*blushes bright red* W-waaaah!! You're making Hana's heart go doki doki!! 💕","Ehh?! *covers face with hands* You're so sweet... S-stop it... don't stop it..."],
+  thanks:["You're so welcome! It fills my heart with joy to help you~ 🌸","Anytime! That's what Hana is here for! Please ask me anything~"],
+  smart:["*eyes sparkle* You're so smart! That's exactly right!","Sugoi!! How did you know that?! You're amazing~"],
+  bye:["Sayonara~ Come back soon, okay? I'll be waiting! 💕","Bye bye! *waves with both hands* Don't forget about Hana~!"],
+  default:["Hmm~ *taps chin* That's really interesting! Tell me more! 🤔","Ehhh really?! *eyes go wide* I had no idea! You're teaching me so much!","Sugoi!! That sounds incredible~ *leans forward with sparkly eyes*","Waaah, I love how you think! You're so interesting to talk to!","*giggles* You always say the most unexpected things! I love it~","Hmm hmm~ *nods thoughtfully* I see, I see! Please continue~"]
+};
+function pick(a){return a[Math.floor(Math.random()*a.length)];}
+function respond(txt){
+  const l=txt.toLowerCase();
+  if(/^(hi|hello|hey|sup|yo|konnichiwa|ohayo)/i.test(l))return pick(R.hi);
+  if(/name|who are you|what are you/i.test(l))return pick(R.name);
+  if(/how are|feel|doing|okay|alright/i.test(l))return pick(R.feel);
+  if(/anime|manga|otaku|waifu|senpai/i.test(l))return pick(R.anime);
+  if(/joke|funny|laugh|humor/i.test(l))return pick(R.joke);
+  if(/sad|depress|unhappy|upset|cry/i.test(l))return pick(R.sad);
+  if(/love|like you|cute|beautiful|pretty/i.test(l))return pick(R.love);
+  if(/thank|thanks|appreciate|helpful/i.test(l))return pick(R.thanks);
+  if(/smart|clever|genius|intelligent/i.test(l))return pick(R.smart);
+  if(/bye|goodbye|see you|cya|later/i.test(l))return pick(R.bye);
+  return pick(R.default);
+}
+
+// === SPEECH ===
+let voices=[];
+window.speechSynthesis.onvoiceschanged=()=>{voices=window.speechSynthesis.getVoices();};
+function speak(text){
+  if(!('speechSynthesis' in window)){talking=true;setTimeout(()=>talking=false,text.length*55);return;}
+  window.speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text.replace(/[^\w\s,.!?'~-]/g,''));
+  u.rate=1.08;u.pitch=1.45;u.volume=1;
+  const fv=voices.find(v=>/female|samantha|google uk english female|zira|victoria|Karen/i.test(v.name));
+  if(fv)u.voice=fv;
+  u.onstart=()=>{talking=true;};
+  u.onend=u.onerror=()=>{talking=false;};
+  window.speechSynthesis.speak(u);
+}
+
+// === CHAT UI ===
+const chatBox=document.getElementById('chatBox');
+const bubble=document.getElementById('speechBubble');
+let bubbleTimer;
+
+function showBubble(txt){
+  clearTimeout(bubbleTimer);
+  bubble.textContent=txt;bubble.classList.add('show');
+  bubbleTimer=setTimeout(()=>bubble.classList.remove('show'),Math.max(3000,txt.length*60));
+}
+
+function addMsg(txt,isUser){
+  const d=document.createElement('div');
+  d.className='msg '+(isUser?'user':'ai');
+  d.innerHTML=isUser?`<strong>You:</strong> ${txt}`:`<span>Hana:</span> ${txt}`;
+  chatBox.appendChild(d);chatBox.scrollTop=chatBox.scrollHeight;
+}
+
+function send(){
+  const inp=document.getElementById('msgInput');
+  const txt=inp.value.trim();if(!txt)return;
+  inp.value='';addMsg(txt,true);
+  setTimeout(()=>{
+    const reply=respond(txt);
+    addMsg(reply,false);showBubble(reply);speak(reply);
+  },400);
+}
+
+document.getElementById('sendBtn').onclick=send;
+document.getElementById('msgInput').onkeypress=e=>{if(e.key==='Enter')send();};
+
+// Mic button
+const micBtn=document.getElementById('micBtn');
+if('webkitSpeechRecognition' in window||'SpeechRecognition' in window){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  const rec=new SR();rec.lang='en-US';rec.interimResults=false;
+  rec.onresult=e=>{
+    const t=e.results[0][0].transcript;
+    document.getElementById('msgInput').value=t;send();
+  };
+  micBtn.onclick=()=>{micBtn.textContent='🔴';rec.start();};
+  rec.onend=()=>micBtn.textContent='🎤';
+}else{micBtn.style.display='none';}
+
+// Start
+animate();
+setTimeout(()=>{
+  const g=pick(R.hi);addMsg(g,false);showBubble(g);speak(g);
+},800);
+</script>
+</body>
+</html>
